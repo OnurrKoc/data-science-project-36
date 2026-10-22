@@ -12,7 +12,17 @@ iterate et: `python watch.py` veya `pytest tests/test_question.py -v`
 
 NOT: Random Forest mesafe tabanlı DEĞİL (ağaç tabanlı) → **scaling GEREKMEZ**.
 """
-
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score, confusion_matrix,
+)
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 # 1. Veri setini yükle
 def load_heart_data(path='data/heart.csv'):
@@ -34,7 +44,10 @@ def load_heart_data(path='data/heart.csv'):
     - y = df['target']
     - X = df.drop(columns=['target'])
     """
-    pass
+    df = pd.read_csv(path)
+    y = df['target']
+    X = df.drop(columns=['target'])
+    return X, y
 
 
 # 2. Veriyi keşfet
@@ -61,7 +74,13 @@ def explore_data(X, y):
     - (y == 1).sum() → pozitif sayısı
     - list(X.columns) → feature isimleri
     """
-    pass
+    return {
+        'n_samples': int(len(X)),
+        'n_features': int(X.shape[1]),
+        'positive_count': int((y == 1).sum()),
+        'negative_count': int((y == 0).sum()),
+        'feature_names': list(X.columns),
+    }
 
 
 # 3. Train / test böl
@@ -83,7 +102,7 @@ def split_data(X, y):
     İpucu:
     - from sklearn.model_selection import train_test_split
     """
-    pass
+    return train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
 
 
 # 4. Random Forest eğit
@@ -104,7 +123,9 @@ def train_random_forest(X_train, y_train, n_estimators=100):
     - model = RandomForestClassifier(n_estimators=n_estimators, random_state=42)
     - model.fit(X_train, y_train)
     """
-    pass
+    model = RandomForestClassifier(n_estimators=n_estimators, random_state=42)
+    model.fit(X_train, y_train)
+    return model
 
 
 # 5. Modeli değerlendir
@@ -127,7 +148,14 @@ def evaluate_model(model, X_test, y_test):
     - y_pred = model.predict(X_test)
     - precision/recall/f1 için zero_division=0 kullanabilirsin.
     """
-    pass
+    y_pred = model.predict(X_test)
+    return {
+        'accuracy': accuracy_score(y_test, y_pred),
+        'precision': precision_score(y_test, y_pred, zero_division=0),
+        'recall': recall_score(y_test, y_pred, zero_division=0),
+        'f1': f1_score(y_test, y_pred, zero_division=0),
+        'confusion_matrix': confusion_matrix(y_test, y_pred),
+    }
 
 
 # 6. Feature importance — hangi faktör kalp hastalığını belirliyor?
@@ -151,7 +179,10 @@ def get_feature_importances(model, feature_names, top_n=10):
     - pairs.sort(key=lambda p: p[1], reverse=True)
     - pairs[:top_n]
     """
-    pass
+    importances = model.feature_importances_
+    pairs = list(zip(feature_names, importances))
+    pairs.sort(key=lambda p: p[1], reverse=True)
+    return pairs[:top_n]
 
 
 # 7. Feature importance barplot
@@ -173,7 +204,15 @@ def plot_feature_importances(model, feature_names):
     - ax.barh(names, values)  # en önemli en üstte görünsün diye listeyi ters çevir
     - return fig
     """
-    pass
+    pairs = get_feature_importances(model, feature_names, top_n=len(feature_names))
+    names = [p[0] for p in pairs][::-1]
+    vals = [p[1] for p in pairs][::-1]
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.barh(names, vals, color="#c0392b")
+    ax.set_xlabel("Önem (feature importance)")
+    ax.set_title("Random Forest — Kalp Hastalığını Belirleyen Faktörler")
+    fig.tight_layout()
+    return fig
 
 
 # 8. n_estimators tuning
@@ -193,7 +232,11 @@ def tune_n_estimators(X_train, X_test, y_train, y_test, n_list):
     - Her n için train_random_forest(..., n_estimators=n) eğit
     - evaluate_model(...)['accuracy'] ile ölç
     """
-    pass
+    results = {}
+    for n in n_list:
+        model = train_random_forest(X_train, y_train, n_estimators=n)
+        results[n] = evaluate_model(model, X_test, y_test)['accuracy']
+    return results
 
 
 # 9. Decision Tree vs Random Forest
@@ -214,7 +257,12 @@ def compare_dt_vs_rf(X_train, X_test, y_train, y_test):
     - RF için train_random_forest(..., n_estimators=100) kullan
     - from sklearn.metrics import accuracy_score
     """
-    pass
+    dt = DecisionTreeClassifier(random_state=42)
+    dt.fit(X_train, y_train)
+    dt_acc = accuracy_score(y_test, dt.predict(X_test))
+    rf = train_random_forest(X_train, y_train, n_estimators=100)
+    rf_acc = accuracy_score(y_test, rf.predict(X_test))
+    return {'decision_tree': dt_acc, 'random_forest': rf_acc}
 
 
 # 10. OOB (Out-Of-Bag) skoru
@@ -236,7 +284,11 @@ def get_oob_score(X_train, y_train, n_estimators=100):
       random_state=42)
     - .fit(X_train, y_train) sonrası .oob_score_ oku
     """
-    pass
+    model = RandomForestClassifier(
+        n_estimators=n_estimators, oob_score=True, random_state=42,
+    )
+    model.fit(X_train, y_train)
+    return float(model.oob_score_)
 
 
 # 11. Tek hasta için tahmin
@@ -262,7 +314,17 @@ def predict_patient(model, patient_row):
     - pred = int(model.predict(X_new)[0])
     - proba = float(model.predict_proba(X_new)[0, 1])
     """
-    pass
+    if isinstance(patient_row, dict):
+        X_new = pd.DataFrame([patient_row])
+    else:
+        X_new = np.array(patient_row).reshape(1, -1)
+    pred = int(model.predict(X_new)[0])
+    proba = float(model.predict_proba(X_new)[0, 1])
+    return {
+        'prediction': pred,
+        'risk': 'yüksek' if pred == 1 else 'düşük',
+        'probability': proba,
+    }
 
 
 # 12. Cross-validation
@@ -286,7 +348,9 @@ def cross_validate_rf(X, y, cv=5):
     - scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
     - scores.mean(), scores.std()
     """
-    pass
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
+    return {'mean': float(scores.mean()), 'std': float(scores.std())}
 
 
 # 13. Sade model — sadece en önemli feature'larla
@@ -313,7 +377,16 @@ def simplify_with_top_features(X_train, X_test, y_train, y_test, feature_names, 
     - X_train[top_feature_names] ile alt küme seç (DataFrame sütun seçimi)
     - Alt küme ile yeni RF eğit, evaluate_model ile ölç
     """
-    pass
+    full_model = train_random_forest(X_train, y_train, n_estimators=100)
+    all_acc = evaluate_model(full_model, X_test, y_test)['accuracy']
+
+    top = [name for name, _ in get_feature_importances(full_model, feature_names, top_n=top_n)]
+    X_train_top = X_train[top]
+    X_test_top = X_test[top]
+    top_model = train_random_forest(X_train_top, y_train, n_estimators=100)
+    top_acc = evaluate_model(top_model, X_test_top, y_test)['accuracy']
+
+    return {'all_features_acc': all_acc, 'top5_acc': top_acc}
 
 
 # 14. Tüm pipeline'ı uçtan uca çalıştır
@@ -337,7 +410,26 @@ def run_pipeline():
             'dt_vs_rf_diff': float (random_forest - decision_tree accuracy),
         }
     """
-    pass
+    X, y = load_heart_data()
+    feature_names = list(X.columns)
+    X_train, X_test, y_train, y_test = split_data(X, y)
+
+    model = train_random_forest(X_train, y_train, n_estimators=100)
+    test_accuracy = evaluate_model(model, X_test, y_test)['accuracy']
+
+    top_feature = get_feature_importances(model, feature_names, top_n=1)[0][0]
+    oob_score = get_oob_score(X_train, y_train, n_estimators=100)
+
+    comp = compare_dt_vs_rf(X_train, X_test, y_train, y_test)
+    dt_vs_rf_diff = comp['random_forest'] - comp['decision_tree']
+
+    return {
+        'n_samples': int(len(X)),
+        'test_accuracy': test_accuracy,
+        'top_feature': top_feature,
+        'oob_score': oob_score,
+        'dt_vs_rf_diff': dt_vs_rf_diff,
+    }
 
 
 if __name__ == "__main__":
